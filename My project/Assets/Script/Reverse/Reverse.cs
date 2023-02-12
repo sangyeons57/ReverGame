@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Unity.Mathematics;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class Reverse : MonoBehaviour
@@ -69,8 +71,90 @@ public class Reverse : MonoBehaviour
                 instance.GetComponent<block>().setRowColumn(i,j);
             }
         }
+    }
+    
+    public static void flip_calculate(int x, int y)
+    {
+        bool check = false;
+        //자신의 오른쪽
+        for (int i = x + 1; i < grid.GetLength(0); i++)
+        {
+            if (grid[i,y] == 0 ||
+            (i == (x + 1)&& grid[i, y] == player_turn))
+            {
+                break;
+            } 
+            else if (grid[i, y] == player_turn)
+            {
+                flip(x,y,i,y);
+                check= true;
+                break;
+            }
+        }
+        //자신의 왼쪽
+        for (int i = x - 1; i >= 0; i--)
+        {
+            if (grid[i,y] == 0 ||
+            (x - 1) == i&& grid[i, y] == player_turn)
+            {
+                break;
+            } 
+            else if (grid[i, y] == player_turn)
+            {
+                flip(i,y,x,y);
+                check= true;
+                break;
+            }
+        }
 
-        
+        // 자신의 아레쪽
+        for (int i = y + 1; i < grid.GetLength(1); i++)
+        {
+            if (grid[x,i] == 0 ||
+            i == (y + 1) && grid[x, i] == player_turn)
+            {
+                break;
+            } 
+            else if (i != (y + 1) && grid[x, i] == player_turn)
+            {
+                flip(x,y,x,i);
+                check= true;
+                break;
+            }
+        }
+        //자신의 위쪽
+        for (int i = y - 1; i >= 0; i--)
+        {
+            if (grid[x,i] == 0 ||
+            (y - 1) == i && grid[x, i] == player_turn)
+            {
+                break;
+            } 
+            else if ((y - 1) != i && grid[x, i] == player_turn)
+            {
+                flip(x,i,x,y);
+                check= true;
+                break;
+            }
+        }
+
+        if (!check)
+        {
+            grid[x, y] = 0;
+            player_turn = (player_turn == 1) ? 2 : 1;;
+        }
+    }
+
+    //항상 x1 < x2 , y1 < y2 여야한다
+    private static void flip(int x1, int y1, int x2, int y2)
+    {
+        for(int i = x1; i <= x2; i++)
+        {
+            for (int j = y1; j <= y2; j++)
+            {
+                grid[i, j] = player_turn;
+            }
+        }
     }
 
 

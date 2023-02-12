@@ -29,10 +29,11 @@ public class block : MonoBehaviour
         Vector2 mousePosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
         hit = Physics2D.Raycast(mousePosition, Vector2.zero);
 
-        if (hit.collider == collider&& Input.GetMouseButtonUp(0))
+        if (hit.collider == collider&& Input.GetMouseButtonUp(0)&& Reverse.grid[row, column] == 0)
         {
             Reverse.grid[row, column] = Reverse.player_turn;
             Reverse.player_turn = (Reverse.player_turn == 1) ? 2 : 1;
+            Reverse.flip_calculate(row,column);
         }
 
         if (Reverse.grid[row,column] == 1)
@@ -43,6 +44,7 @@ public class block : MonoBehaviour
         }
         
     }
+
 
     public void setRowColumn(int row, int column)
     {
