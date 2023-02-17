@@ -1,26 +1,31 @@
+using Codice.Client.BaseCommands.BranchExplorer.Layout;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+
 public class block : MonoBehaviour
 {
-    private int row;
-    private int column;
+    readonly Dictionary<Piece.Status, Color> colorDict =
+        new Dictionary<Piece.Status, Color>() 
+        {
+            {Piece.Status.Void, new Color(1, 1, 1) },
+            {Piece.Status.Red, new Color(200/255f, 0/255f, 0/255f) },
+            {Piece.Status.Blue, new Color(0/255f, 0/255f, 200/255f) },
+        }; 
 
     private RaycastHit2D hit;
     private BoxCollider2D collider;
     private SpriteRenderer spriteRenderer;
 
-    private Reverse reverse;
+    public Piece piece{ get; set; }
 
     public bool isReversed = false;
     // Start is called before the first frame update
-    void Start()
+    void Awake()
     {
-        reverse = GameObject.Find("gameSystem").GetComponent<Reverse>();
         collider = GetComponent<BoxCollider2D>();
         spriteRenderer= GetComponent<SpriteRenderer>();
-
     }
 
     // Update is called once per frame
@@ -30,24 +35,12 @@ public class block : MonoBehaviour
         hit = Physics2D.Raycast(mousePosition, Vector2.zero);
 
         if (hit.collider == collider&& Input.GetMouseButtonUp(0))
-        {
-            Debug.Log(string.Format("{0} , {1} playerInput",row,column));
-            reverse.playerInput(row, column);
-        }
-
-        spriteRenderer.color = reverse.getColor(row,column);
-        
+            piece.playerInput();
     }
 
-
-    public void setRowColumn(int row, int column)
+    public void changesetColorMode(Piece.Status status)
     {
-        this.row = row;
-        this.column = column;
+        spriteRenderer.color = (Color)colorDict[status];
     }
 
-    public int[] getRowColumn()
-    {
-        return new int[] {row, column}; 
-    }
 }

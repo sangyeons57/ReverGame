@@ -1,525 +1,220 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.ComponentModel;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Unity.VisualScripting;
 using UnityEngine;
-using UnityEngine.Rendering.Universal;
+using PlasticGui.WorkspaceWindow.PendingChanges;
+
+public class Piece
+{
+    public enum Status
+    {
+        Void,
+        Red,
+        Blue
+    }
+
+
+    public readonly int x;
+    public readonly int y;
+    private Status status;
+    public Status changeStatus { get; set; }
+
+    public Status getStatus() 
+    {
+        return status; 
+    }
+
+    public Piece setStatus(Status status)
+    {
+        this.status = status;
+        return this;
+    }
+
+
+    GameObject piece;
+    block pieceScript;
+    PieceList pieceList;
+
+    public Piece(int x, int y, Status status)
+    {
+        this.x = x;
+        this.y = y;
+        this.status = status;
+    }
+
+    public Piece(int x, int y, GameObject piece, PieceList pieceList, Status status = Status.Void)
+        : this(x, y, status)
+    {
+
+        this.piece = MonoBehaviour.Instantiate(piece);
+        this.pieceList = pieceList;
+    }
+    public Piece instanceSetting(float xPos, float yPos , float size)
+    {
+        this.piece.transform.position = new Vector2(xPos, yPos);
+        this.piece.transform.localScale = Vector3.one * size;
+
+        this.pieceScript = this.piece.GetComponent<block>();
+        this.pieceScript.piece = this;
+        return this;
+    }
+
+    public void apply()
+    {
+        pieceScript.changesetColorMode(status);
+    }
+
+    public bool cehckXY(int x, int y)
+    {
+        return this.x== x && this.y == y;
+    }
+
+    public void playerInput()
+    {
+        this.changeStatus = this.status;
+        this.status = pieceList.playerStatus;
+        pieceList.setFocus(this)
+            .fipDirectionAction();
+
+        if (this.status == this.changeStatus)
+            pieceList.changePlayerStatus();
+        else 
+            this.status = this.changeStatus;
+    }
+}
+
+public class PieceList
+{
+    private List<Piece> pieceList;
+    private Piece focus;
+
+    public Piece.Status playerStatus{get ; set;} 
+
+    private int[,] direction = new int[8,2] { 
+        {1, 1 }, {1, 0}, {1,-1},
+
+        {0, 1 }, {0,-1}, //가운데는 빠짐
+
+        {-1, 1 }, {-1, 0}, {-1,-1}, 
+    };
+
+    public PieceList ()
+    {
+        this.pieceList = new List<Piece>();
+        this.playerStatus = Piece.Status.Blue; 
+    }
+
+    public Piece Add (Piece piece)
+    {
+        pieceList.Add(piece);
+        return piece;
+    }
+
+    public Piece getPiece(int x, int y)
+    {
+        foreach(Piece piece in pieceList)
+            if (piece.cehckXY(x, y))
+                return piece;
+        return null;
+    }
+
+    public PieceList setFocus(Piece focus)
+    {
+        this.focus = focus;
+        return this; 
+    }
+    public Piece getFocus()
+    {
+        return focus;
+    }
+
+    //direction으로 드러온 방향으로 status가 날올때까지 탐색 존재하면 ture, flip할 만한 적합한 상태가 아니면 flase
+    public bool searchDirection(int directionX, int directionY, Piece piece)
+    {
+        piece = getPiece(directionX + piece.x, directionY + piece.y);
+
+        //Debug.Log($"{focus.getStatus()} - {piece.getStatus()} ({piece.x} , {piece.y}) ");
+        if (piece == null || piece.getStatus() == Piece.Status.Void ||
+            (playerStatus == piece.getStatus()&&
+            piece.x - focus.x == directionX&&
+            piece.y - focus.y == directionY))
+            return false;
+        else if (playerStatus == piece.getStatus())
+            return true;
+        else
+            return searchDirection(directionX, directionY, piece);
+    }
+
+    //flipDirection 실행시켜주는놈
+    public void fipDirectionAction()
+    {
+        for (int i = 0; i < direction.GetLength(0); i++)
+            flipDirection(direction[i,0], direction[i,1]);
+    }
+
+    // 특정방향으로 flip가능한지 체크후flip가능하면 flip실행
+    public void flipDirection(int directionX, int directionY)
+    {
+        if (searchDirection(directionX, directionY, focus ))
+        {
+            flip(directionX, directionY, focus);
+            // 뒤집기가 가능한 장소였으면 플레이어가 둔것도 고정
+            focus.changeStatus = focus.getStatus();
+        }
+
+    }
+
+    //사용자가 놓은 점을setfocus하고 그다음 flip실행
+    public PieceList flip(int directionX, int directionY, Piece piece)
+    {
+        if (focus.getStatus() == piece.getStatus() && piece != focus)
+            return this;
+        piece.setStatus(focus.getStatus()).apply();
+        return flip(directionX, directionY, getPiece(piece.x + directionX, piece.y + directionY));
+    }
+
+    public void changePlayerStatus()
+    {
+        playerStatus = (playerStatus == Piece.Status.Blue) ? Piece.Status.Red : Piece.Status.Blue;
+    }
+}
 
 public class Reverse : MonoBehaviour
 {
-
-    public static readonly int PLAYER1 = 1;
-    public static readonly int PLAYER2 = 2;
-
     [SerializeField]
     private int size;
 
     [SerializeField]
     private GameObject block;
 
-    private const float block_size = 1.3f;
-    private float correction_size = 7f;
+    PieceList pieceList;
 
-    private float half_size;
+    private float correctionPiecePos = 7f;
+    const float pieceSize = 1.3f;
 
-    //0-플레이어1 1-플레이저2
-    private static Cell.State player_turn;
-
-    private LineList line_list;
-
-    // Start is called before the first frame update
-    void Start()
+    private void Start()
     {
-        player_turn = Cell.State.AbleBlue;
+        correctionPiecePos = correctionPiecePos / size;
+        float correctionHalfSize = pieceSize * size / 2 * correctionPiecePos;
 
+        pieceList= new PieceList();
 
-        line_list = new LineList();
-
-        //generate row line
-        for (int i = 0; i < size; i++)
+        for (int x = 0; x < size; x++)
         {
-            List<Cell> cells = new List<Cell>();
-            for ( int j = 0;j < size; j++ )
-                cells.Add(new Cell(j,i,i));
-            line_list.add(new Line(cells));
-
-            List<Cell> cells_B = new List<Cell>();
-            for ( int j = size-1; j >= 0; j--)
-                cells_B.Add(new Cell(j,i,size - 1 - j));
-            line_list.add(new Line(cells_B));
-        }
-
-        //generate colum line
-        for (int i = 0; i < size; i++)
-        {
-            List<Cell> cells = new List<Cell>();
-            for (int j = 0; j < size; j++)
-                cells.Add(new Cell(i, j, j));
-            line_list.add(new Line(cells));
-
-            List<Cell> cells_B = new List<Cell>();
-            for ( int j = size -1; j >= 0; j--)
-                cells_B.Add(new Cell(i,j, size -1 -j));
-            line_list.add(new Line(cells_B));
-        }
-
-        //diagnoal  left down -> right up
-        for (int i = 0; i < size; i++)
-        {
-            List<Cell> cells = new List<Cell>();
-            for (int j = 0; j < i+1; j++)
-                cells.Add(new Cell(j, j - i, j));
-            line_list.add(new Line(cells));
-
-            List<Cell> cells_B = new List<Cell>();
-            for ( int j = i+1; j >= 0; j--)
-                cells_B.Add(new Cell(j,j - i, i + 1 - j ));
-            line_list.add(new Line(cells_B));
-        }
-        for (int i = 0; i < size; i++)
-        {
-            List<Cell> cells = new List<Cell>();
-            for (int j = 0; j < size - i; j++)
-                cells.Add(new Cell(j, j + i, j));
-            line_list.add(new Line(cells));
-
-            List<Cell> cells_B = new List<Cell>();
-            for ( int j = size - 1 - i; j >= 0; j--)
-                cells_B.Add(new Cell(j + i, j, size - 1- i - j));
-            line_list.add(new Line(cells_B));
-        }
-
-        //diagnoal  left up -> right down
-        for (int i = 0; i < size; i++)
-        {
-            List<Cell> cells = new List<Cell>();
-            for (int j = 0; j < size - i; j++)
-                cells.Add(new Cell(j + i, j, j));
-            line_list.add(new Line(cells));
-
-            List<Cell> cells_B = new List<Cell>();
-            for ( int j = i+1; j >= 0; j--)
-                cells_B.Add(new Cell(size - j, size - (j + i), i + 1 - j ));
-            line_list.add(new Line(cells_B));
-        }
-        for (int i = size - 1; i >= 0; i--)
-        {
-            List<Cell> cells = new List<Cell>();
-            for (int j = 0; j < i+1; j++)
-                cells.Add(new Cell(size - (i - j), size - j, j));
-            line_list.add(new Line(cells));
-
-            List<Cell> cells_B = new List<Cell>();
-            for ( int j = i+1; j >= 0; j--)
-                cells_B.Add(new Cell(size - (i - j),size - j, i+1 - j));
-            line_list.add(new Line(cells_B));
-        }
-
-        int focus = (size - 1) / 2 ;
-        line_list.baseSetting(
-            new BasePoint(focus, focus, Cell.State.Red),
-            new BasePoint(focus + 1, focus, Cell.State.Blue),
-            new BasePoint(focus, focus + 1, Cell.State.Blue),
-            new BasePoint(focus + 1, focus + 1, Cell.State.Red));
-
-        //기준점
-        int outline_focus = focus - 1; 
-        line_list.baseSetting(
-            //위
-            new BasePoint(outline_focus + 1, outline_focus, Cell.State.AbleBlue),
-            new BasePoint(outline_focus + 2, outline_focus, Cell.State.AbleRed),
-            //아레
-            new BasePoint(outline_focus + 1, outline_focus + 3, Cell.State.AbleRed),
-            new BasePoint(outline_focus + 2, outline_focus + 3, Cell.State.AbleBlue),
-            //왼쪽
-            new BasePoint(outline_focus, outline_focus + 1, Cell.State.AbleBlue),
-            new BasePoint(outline_focus, outline_focus + 2, Cell.State.AbleRed),
-            //오른쪽
-            new BasePoint(outline_focus + 3, outline_focus + 1, Cell.State.AbleRed),
-            new BasePoint(outline_focus + 3, outline_focus + 2, Cell.State.AbleBlue) );
-
-        //Debug.Log(outline_focus);
-
-        //사용할크기 보정
-        correction_size = correction_size / size;
-
-        half_size = block_size * size / 2 * correction_size;
-
-        //block크기 보정에 맞춰 전환
-        block.transform.localScale = Vector3.one * correction_size;
-
-        playerInputSetup(size);
-
-    }
-
-    private void playerInputSetup(int size)
-    {
-        for (int i = 0; i < size;i++)
-        {
-            for (int j = 0; j < size;j++)
+            for (int y = 0; y < size; y++)
             {
-                block instance = Instantiate(block, new Vector2(i - half_size,j - half_size), Quaternion.identity).GetComponent<block>();
-                instance.setRowColumn(i, j);
+                pieceList.Add(new Piece(x, y, block, pieceList))
+                    .instanceSetting(x - correctionHalfSize,y - correctionHalfSize, correctionPiecePos);
             }
         }
-    }
 
-    public bool playerInputCheck(int x, int y)
-    {
-        return line_list.playerInputCheck(x, y, player_turn);
-    }
-
-    public void changePlayer()
-    {
-        player_turn = (player_turn == Cell.State.AbleBlue) ? Cell.State.AbleRed : Cell.State.AbleBlue;
-    }
-
-    public Color getColor(int x, int y)
-    {
-        if (line_list.playerInputCheck(x,y,Cell.State.Blue))
-        {
-            return new Color(0 / 255f, 0 / 255f, 255 / 255f);
-        } 
-        else if (line_list.playerInputCheck(x,y,Cell.State.Red))
-        {
-            return new Color(255 / 255f, 0 / 255f, 0 / 255f);
-        }
-        else
-        {
-            return new Color(1, 1, 1);
-        }
-    }
-
-    public void playerInput(int x, int y)
-    {
-        if( line_list.playerInput(x, y, player_turn) )
-            changePlayer();
-    }
-
-}
-
-class BasePoint
-{
-    public int x,y;
-    public Cell.State state;
-
-    public BasePoint(int x, int y, Cell.State state)
-    {
-        this.x = x;
-        this.y = y;
-        this.state = state;
+        pieceList.getPiece(4,4).setStatus(Piece.Status.Red).apply();
+        pieceList.getPiece(4,5).setStatus(Piece.Status.Blue).apply();
+        pieceList.getPiece(5,4).setStatus(Piece.Status.Blue).apply();
+        pieceList.getPiece(5,5).setStatus(Piece.Status.Red).apply();
     }
 }
 
-class LineList
-{
-    List<Line> AllLines;
-
-    public LineList()
-    {
-        AllLines = new List<Line>();
-    }
-    public void add(Line lineList)
-    {
-        AllLines.Add(lineList);
-    }
-
-    public void baseSetting(params BasePoint[] basePoints)
-    {
-        foreach (BasePoint basePoint in basePoints)
-        {
-            foreach(Line line in AllLines)
-            {
-                Cell cell = line.getCell(basePoint.x, basePoint.y);
-                if(cell != null)
-                {
-                    cell.setState(basePoint.state);
-                }
-            }
-        }
-    }
-
-    public bool playerInput(int x, int y, Cell.State state)
-    {
-        if (!(state == Cell.State.AbleBlue || state == Cell.State.AbleRed))
-        {
-            Debug.Log(string.Format("Incorrect state {0}",state));
-            return false ;
-
-        }
-        foreach(Line line in AllLines)
-        {
-            if(line.checkState(x, y, state))
-            {
-                Cell cell = line.getCell(x, y);
-                line.flip(cell.getNumber(), state);
-            }
-        }
-
-        return true ;
-    }
-
-    public bool playerInputCheck(int x, int y, Cell.State state)
-    {
-        foreach (Line line in AllLines)
-        {
-            if( line.checkState(x, y, state) )
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    public List<Cell.State> getState(int x, int y)
-    {
-        List< Cell.State > states = new List< Cell.State >();
-        foreach (Line line in AllLines)
-        {
-            Cell.State state = line.getState(x, y);
-            if(state != Cell.State.Null)
-                states.Add(state);
-        }
-
-        return states;
-    }
-}
-
-
-class Line
-{
-    List<Cell> line;
-
-    public Line (List<Cell> line)
-    {
-        this.line = line;
-    }
-
-    //들어온 Cell에 정보로 flip
-    public void flip(int number, Cell.State state)
-    {
-        if (Cell.State.AbleBlue == state)
-            state = Cell.State.Blue;
-        else if (Cell.State.AbleRed == state)
-            state = Cell.State.Red;
-        else
-            return;
-        do
-        {
-            Debug.Log(number);
-            Debug.Log(line[number].getNumber());
-            line[number].setState(state);
-            number += 1;
-        } while (line[number].getState() == state);
-    }
-
-
-    //라인에서 (x,y)값이 특정값인지 확인 검색
-    public bool checkState(int x, int y, Cell.State state)
-    {
-        foreach (Cell cell in line)
-        {
-            if (cell.checkState(x, y, state))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    //특정좌표의 값에 cell가지고오기
-    public Cell getCell(int x, int y)
-    {
-        foreach (Cell cell in line)
-            if(cell.checkCoordinate(x, y))    
-                return cell;
-        return null;
-    }
-
-    public Cell.State getState(int x,int y)
-    {
-        foreach (Cell cell in line)
-            if (cell.checkCoordinate(x, y))
-                return cell.getState();
-        return Cell.State.Null;
-    }
-
-    //특정 위치값이 있으면 해당 위치값의 state상태 변경
-    //player input 받는거 State - REDAble,BLUEAble 만
-    public Cell playerInputCoordinate(int x, int y, Cell.State state)
-    {
-        foreach (Cell cell in line)
-        {
-            if( cell.checkCoordinate(x, y) )
-            {
-                return cell;
-            }
-        }
-        return null;
-    }
-
-    //cell 에서 써있는 가능한 값까지 가지고오기 State - Able만
-    public int getCellAbleValue(Cell cell, Cell.State state)
-    {
-        return (state == Cell.State.AbleBlue) ? cell.getLastBlue() : cell.getLastRed();
-    }
-
-
-    //line전체 Able값 재설정
-    public void resetAblesetting()
-    {
-        Cell beforeCell = line[0];
-
-        foreach (Cell cell in line)
-        {
-            //가장가까운 각각의색의 정보 재설정
-            int[] distance = cell.calculateLast(beforeCell);
-            cell.setLast(distance[Cell.BLUE], distance[Cell.RED]);
-            //cell에 두는것이 가능한지 재설정
-            cell.resetAble();
-
-            beforeCell= cell;
-        }
-    }
-
-
-}
-
-
-
-class Cell
-{
-    public static readonly int INIT_DISTANCE = 1; 
-    public static readonly int NOT_EXIST = 0; 
-
-    public static readonly int BLUE = 0;
-    public static readonly int RED = 1;
-    public enum State
-    {
-        Null,
-        Void,
-        Red,
-        Blue,
-        AbleBlue,
-        AbleRed,
-    }
-    private int x;
-    private int y;
-
-    private State state;
-
-    private int lastBlue;
-    private int lastRed;
-
-    private int number;
-
-    public Cell(int x, int y, int number)
-    {
-        state = State.Void;
-        this.x = x;
-        this.y = y;
-
-
-        lastBlue = NOT_EXIST;
-        lastRed = NOT_EXIST;
-
-        this.number= number;
-
-    }
-
-    public Cell(int x, int y, int number,State state, int lastBlue, int lastRed) 
-        : this(x,y,number)
-    {
-        this.state = state;
-
-        this.lastBlue = lastBlue;
-        this.lastRed = lastRed;
-    }
-
-    public bool checkState(int x, int y, State state)
-    {
-        //Debug.Log(string.Format("celllcheckstate {0} - {1} / {2} - {3} / {4} - {5}",x,this.x, y,this.y,state,this.state));
-        return this.x == x && this.y == y && this.state == state;
-    }
-    public bool checkCoordinate(int x, int y)
-    {
-        return this.x == x && this.y == y;
-    }
-
-    public State getState()
-    {
-        return state;
-    }
-    public void setState(State state) 
-    { 
-        this.state=state;
-    }
-
-    public int getLastBlue()
-    {
-        return lastBlue;
-    }
-
-    public int getLastRed()
-    {
-        return lastRed;
-    }
-
-    //LastRed, LastBlue 를 설정한다
-    public void setLast(int lastBlue, int lastRed)
-    {
-        this.lastBlue = lastBlue; this.lastRed = lastRed;
-    }
-
-    //Last 값 계산
-    public int[] calculateLast(Cell lastCell)
-    {
-
-        //이전 Cell이 Blue 일경우
-        if (lastCell.getState() == State.Blue)
-        {
-            //Blue로 부터의 거리가 1
-            //이전Cell에 Red값이 있다고 하면 그값 + 1
-            return new int[]
-            { 
-                INIT_DISTANCE, (lastCell.getLastBlue() == NOT_EXIST) ? NOT_EXIST : lastCell.getLastRed() + 1
-            };
-        }
-        //이전 Cell이 Red 일경우
-        else if (lastCell.getState() == State.Red)
-        {
-            return new int[]
-            {
-                (lastCell.getLastBlue() == NOT_EXIST) ? NOT_EXIST : lastCell.getLastBlue() + 1,
-                INIT_DISTANCE
-            };
-        }
-        //이전 Cell이 void인 경우
-        else
-        {
-            return new int[] { NOT_EXIST, NOT_EXIST };
-        }
-    }
-
-    //able재설정
-    public void resetAble()
-    {
-        //빈곳과 가능한지만 계산하는것이기때문에
-        //만약에 빈곳이아니라면 튕겨내기
-        if (state == State.Blue || state == State.Red)
-            return ;
-        //blue가 존재하고 lsatRed가 직전에 초기화되었으면
-        else if (lastBlue != NOT_EXIST && lastRed == INIT_DISTANCE)
-            state = State.Blue;
-        //Red가 존재하고 lastBlue가 직전에 초기화 되었으면
-        else if (lastRed != NOT_EXIST && lastBlue == INIT_DISTANCE)
-            state = State.Red;
-    }
-
-    public int getNumber()
-    {
-        return number;
-    }
-}

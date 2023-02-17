@@ -152,8 +152,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a922a88caacf80848a2dd78e8af9214b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  row: 10
-  column: 10
+  size: 10
   block: {fileID: 6686646901567787895, guid: 2ac18dc82f142524cb010a58906f167a, type: 3}
 --- !u!4 &1301546803
 Transform:
