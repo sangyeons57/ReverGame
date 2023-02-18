@@ -5,7 +5,6 @@ using System.ComponentModel;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Unity.VisualScripting;
 using UnityEngine;
-using PlasticGui.WorkspaceWindow.PendingChanges;
 
 public class Piece
 {
@@ -51,14 +50,17 @@ public class Piece
 
         this.piece = MonoBehaviour.Instantiate(piece);
         this.pieceList = pieceList;
+
     }
-    public Piece instanceSetting(float xPos, float yPos , float size)
+    public Piece instanceSetting(float xPos, float yPos , float size, GameObject parent)
     {
         this.piece.transform.position = new Vector2(xPos, yPos);
         this.piece.transform.localScale = Vector3.one * size;
 
         this.pieceScript = this.piece.GetComponent<block>();
         this.pieceScript.piece = this;
+
+        this.piece.transform.SetParent(parent.transform);
         return this;
     }
 
@@ -74,6 +76,10 @@ public class Piece
 
     public void playerInput()
     {
+        Debug.Log($"playeriput {x}, {y}");
+        if (status != Status.Void)
+            return;
+
         this.changeStatus = this.status;
         this.status = pieceList.playerStatus;
         pieceList.setFocus(this)
@@ -83,6 +89,22 @@ public class Piece
             pieceList.changePlayerStatus();
         else 
             this.status = this.changeStatus;
+    }
+}
+
+public class CounterClass
+{
+    public int Red = 0;
+    public int Blue = 0;
+
+    public void addRed()
+    {
+        Red++;
+    }
+    
+    public void addBlue()
+    {
+        Blue++;
     }
 }
 
@@ -119,6 +141,21 @@ public class PieceList
             if (piece.cehckXY(x, y))
                 return piece;
         return null;
+    }
+
+    public CounterClass checkAllPieceChanged()
+    {
+        CounterClass counter = new CounterClass();
+        foreach(Piece piece in pieceList)
+        {
+            if (piece.getStatus() == Piece.Status.Blue)
+                counter.addBlue();
+            else if (piece.getStatus() == Piece.Status.Red)
+                counter.addRed();
+            else
+                return null;
+        }
+        return counter;
     }
 
     public PieceList setFocus(Piece focus)
@@ -179,6 +216,7 @@ public class PieceList
     public void changePlayerStatus()
     {
         playerStatus = (playerStatus == Piece.Status.Blue) ? Piece.Status.Red : Piece.Status.Blue;
+        Camera.main.backgroundColor = Reverse.backgroundColor[playerStatus];
     }
 }
 
@@ -190,24 +228,39 @@ public class Reverse : MonoBehaviour
     [SerializeField]
     private GameObject block;
 
+    [SerializeField]
+    private GameObject parentOjbect;
+
+    public static Dictionary<Piece.Status, Color> backgroundColor = new Dictionary<Piece.Status, Color>()
+    {
+        {Piece.Status.Void, new Color(50/255f, 50/255f, 50/255f) },
+        {Piece.Status.Red, new Color(110/255f, 60/255f, 60/255f) },
+        {Piece.Status.Blue, new Color(50/255f, 80/255f, 120/255f) },
+    };
+
     PieceList pieceList;
 
     private float correctionPiecePos = 7f;
     const float pieceSize = 1.3f;
 
+
     private void Start()
     {
+        //Screen.SetResolution(640, 360, false);
+
         correctionPiecePos = correctionPiecePos / size;
         float correctionHalfSize = pieceSize * size / 2 * correctionPiecePos;
 
         pieceList= new PieceList();
+
+        Camera.main.backgroundColor = backgroundColor[pieceList.playerStatus];
 
         for (int x = 0; x < size; x++)
         {
             for (int y = 0; y < size; y++)
             {
                 pieceList.Add(new Piece(x, y, block, pieceList))
-                    .instanceSetting(x - correctionHalfSize,y - correctionHalfSize, correctionPiecePos);
+                    .instanceSetting(x - correctionHalfSize, y - correctionHalfSize, correctionPiecePos, parentOjbect);
             }
         }
 
@@ -215,6 +268,25 @@ public class Reverse : MonoBehaviour
         pieceList.getPiece(4,5).setStatus(Piece.Status.Blue).apply();
         pieceList.getPiece(5,4).setStatus(Piece.Status.Blue).apply();
         pieceList.getPiece(5,5).setStatus(Piece.Status.Red).apply();
+    }
+
+    private void Update()
+    {
+        //턴 넘기기
+        if(Input.GetKeyDown(KeyCode.Space))
+        {
+            pieceList.changePlayerStatus();
+        }
+
+        CounterClass counter = pieceList.checkAllPieceChanged(); 
+        if(counter != null)
+        {
+            if(counter.Red > counter.Blue)
+                Camera.main.backgroundColor=new Color(0,0,200/255f);
+            else
+                Camera.main.backgroundColor=new Color(200/255f,0,0);
+        }
+
     }
 }
 

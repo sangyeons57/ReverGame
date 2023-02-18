@@ -1,4 +1,3 @@
-using Codice.Client.BaseCommands.BranchExplorer.Layout;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -35,7 +34,9 @@ public class block : MonoBehaviour
         hit = Physics2D.Raycast(mousePosition, Vector2.zero);
 
         if (hit.collider == collider&& Input.GetMouseButtonUp(0))
+        {
             piece.playerInput();
+        }
     }
 
     public void changesetColorMode(Piece.Status status)
